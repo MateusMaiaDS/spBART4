@@ -1466,7 +1466,7 @@ void getPredictions(Node* tree,
                 // Seeing which ancestors are in the tre
                 for(int j = 0; j < data.x_train.n_cols; j++){
                         if(t_nodes[i]->ancestors[j]>0){
-                                t_ancestors[j] = 1;
+                                t_ancestors[j] = t_ancestors[j] + 1 ;
                         }
                 }
                 t_dept[i] = t_nodes[i]->depth;
