@@ -138,7 +138,7 @@ rbart <- function(x_train,
              B_test_arr[,,i] <- splines::spline.des(x = x_test_scale[,continuous_vars[i], drop = FALSE],
                                                     knots = new_knots[,continuous_vars[i]],
                                                     ord = 4,
-                                                    derivs = 0*x_test_scale[,continuous_vars[i], drop = FALSE],outer.ok = FALSE)$design
+                                                    derivs = 0*x_test_scale[,continuous_vars[i], drop = FALSE],outer.ok = TRUE)$design
 
      }
 

@@ -1422,14 +1422,16 @@ void getPredictions(Node* tree,
                         current_prediction_train[t_nodes[i]->train_index[j]] = leaf_y_hat[j];
                 }
 
-                if(t_nodes[i]->n_leaf_test < 1 ){
-                        // Rcpp::stop("Stopping test error");
-                        continue;
-                }
+                // // Skipping if there aren't test obsrvations;
+                // Rcpp::Rcout << "Number of leafs of the test "<< t_nodes[i]->n_leaf_test << endl;
+                // if(t_nodes[i]->n_leaf_test < 1 ){
+                //         // Rcpp::stop("Stopping test error");
+                //         continue;
+                // }
 
 
                 // Calculating the sum over multiple predictors
-                arma::vec betas_b_sum_test(t_nodes[i]->B_test.n_rows,arma::fill::zeros);
+                arma::vec betas_b_sum_test(t_nodes[i]->n_leaf_test,arma::fill::zeros);
 
 
                 for(int j = 0;j<data.d_var;j++){
@@ -1438,10 +1440,9 @@ void getPredictions(Node* tree,
                         }
                 }
 
-                return;
-
                 // Creating the y_hattest
                 arma::vec leaf_y_hat_test(t_nodes[i]->n_leaf_test);
+                // Rcpp::Rcout << "Number of leafs of the test "<< betas_b_sum_test(1) << endl;
 
                 if(data.intercept_model){
                         leaf_y_hat_test = betas_b_sum_test + t_nodes[i]->beta_zero ;
