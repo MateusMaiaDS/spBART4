@@ -98,8 +98,8 @@ struct Node {
      Node* left;
      Node* right;
      Node* parent;
-     arma::vec train_index;
-     arma::vec test_index;
+     Rcpp::NumericVector train_index;
+     Rcpp::NumericVector test_index;
 
      // Branch parameters
      int var_split;

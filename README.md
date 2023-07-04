@@ -8,5 +8,5 @@ You can install the development version of spBART3 from [GitHub](https://github.
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("MateusMaiaDS/spBART3")
+devtools::install_github("MateusMaiaDS/spBART4")
 ```

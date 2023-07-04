@@ -243,24 +243,12 @@ Node::Node(modelParam &data){
         left = NULL;
         right = NULL;
         parent = NULL;
-        train_index = arma::zeros<arma::vec>(data.x_train.n_rows);
         n_leaf = data.x_train.n_rows;
-        test_index = arma::zeros<arma::vec>(data.x_test.n_rows) ;
         n_leaf_test = data.x_test.n_rows;
-        train_index.fill(-1);
-        test_index.fill(-1);
+
 
         // Initializing the ancestors vector
         ancestors = arma::vec(data.x_train.n_cols,arma::fill::zeros);
-
-        // Initializing those vectors
-        for(int i = 0; i< data.x_train.n_rows; i ++ ) {
-                train_index[i] = -1;
-        }
-        for(int i = 0; i< data.x_test.n_rows; i ++ ) {
-                test_index[i] = -1;
-        }
-
 
         var_split = -1;
         var_split_rule = 0.0;
@@ -298,18 +286,16 @@ void Node::Stump(modelParam& data){
         left = this;
         right = this;
         parent = this;
-        // n_leaf  = data.x_train.n_rows;
+        n_leaf  = data.x_train.n_rows;
+        n_leaf_test = data.x_test.n_rows;
 
-        // Updating the training index with the current observations
-        for(int i=0; i<data.x_train.n_rows;i++){
-                train_index[i] = i;
+        for(int i=0; i < data.x_train.n_rows;i++){
+                train_index.push_back(i);
         }
 
-        // Updating the same for the test observations
-        for(int i=0; i<data.x_test.n_rows;i++){
-                test_index[i] = i;
+        for(int i=0; i < data.x_test.n_rows;i++){
+                test_index.push_back(i);
         }
-
 }
 
 void Node::addingLeaves(modelParam& data){
@@ -335,10 +321,6 @@ void Node::addingLeaves(modelParam& data){
      left -> log_likelihood = 0.0;
      left -> n_leaf = 0.0;
      left -> depth = this->depth+1;
-     left -> train_index = arma::zeros<arma::vec>(data.x_train.n_rows);
-     left -> test_index = arma::zeros<arma::vec>(data.x_test.n_rows);
-     left -> train_index.fill(-1);
-     left -> test_index.fill(-1);
      left -> ancestors = this->ancestors;
 
      right -> isRoot = false;
@@ -356,10 +338,6 @@ void Node::addingLeaves(modelParam& data){
      right -> log_likelihood = 0.0;
      right -> n_leaf = 0.0;
      right -> depth = this->depth+1;
-     right -> train_index = arma::zeros<arma::vec>(data.x_train.n_rows);
-     right -> test_index = arma::zeros<arma::vec>(data.x_test.n_rows);
-     right -> train_index.fill(-1);
-     right -> test_index.fill(-1);
      right -> ancestors = this->ancestors;
 
 
@@ -538,10 +516,11 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
         // Updating all residuals from terminal nodes
         for(int l = 0; l < t_nodes.size();l++) {
                 t_nodes[l]->updateResiduals(curr_res);
-                Rcpp::Rcout << "Terminal node size: " << t_nodes[l]->n_leaf << endl;
+                // Rcpp::Rcout << "Terminal node size: " << t_nodes[l]->n_leaf << endl;
 
         }
 
+        // Invalid node to be splitted;
         if(g_node->n_leaf<2){
                 return;
         }
@@ -563,37 +542,34 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
         int p_try = 0; // Number of times that we tried the variable p
 
         // Finding a cutpoint
-        arma::vec split_candidates = arma::shuffle(arma::regspace(0,1,data.x_train.n_cols-1));
-        Rcpp::NumericVector valid_cutpoint;
-        // arma::vec g_node_res(g_node->n_leaf);
+        // cout << "error here 1.1" << endl;
 
-        Rcpp::Rcout << "Entering in the search for.   " << endl;
+        arma::vec split_candidates = arma::shuffle(arma::regspace(0,1,data.x_train.n_cols-1));
+        // arma::vec split_candidates = arma::vec(1,arma::fill::zeros);
+
+        // FIX THIS
+        Rcpp::NumericVector valid_cutpoint_vector;
+
+        // cout << "error here 1.2" << endl;
 
         // Initialsiing the search for a valid node
         while(!no_valid_node){
                 g_node->var_split = split_candidates(p_try);
 
-                Rcpp::Rcout << " The selected var split was: " << g_node->var_split << endl;
-                Rcpp::Rcout << " Numcut dimensions " << data.xcut.n_cols << endl;
-
+                Rcpp::NumericVector valid_cutpoint;
                 Rcpp::NumericVector var_split_range; // For the current sampled value
 
                 // Getting the maximum and the minimum
-                for(int i = 0; i < g_node->n_leaf; i++){
+                for(int i = 0; i < g_node->train_index.size(); i++){
                         var_split_range.push_back(data.x_train(g_node->train_index[i],g_node->var_split));
                         // g_node_res(i) = curr_res(g_node->train_index[i]); // Updating the residuals
                 }
 
 
-                // Getting information about the node udpate residuals
-                Rcpp::Rcout << " Getting the split range was ok: " << var_split_range.size() <<endl;
 
                 // Getting the minimum and the maximum range:
                 double max_rule = max(var_split_range);
                 double min_rule = min(var_split_range);
-
-                Rcpp::Rcout << " Getting the mininum rule: " << min_rule << endl;
-                Rcpp::Rcout << " Getting the maximum rule: " << max_rule << endl;
 
 
                 for(int cut = 0; cut < data.xcut.n_rows;cut++){
@@ -602,7 +578,6 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
                         }
                 }
 
-                Rcpp::Rcout << "Getting the size of the valid cutpoint: " << valid_cutpoint.size() << endl;
 
 
                 // Checking the valid cutpoints
@@ -612,11 +587,11 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
                                 no_valid_node = true;
                         };
                 } else {
+                        valid_cutpoint_vector = valid_cutpoint;
                         break; // Go out from the while
                 }
         }
 
-        Rcpp::Rcout << "Search was ok" << endl;
 
 
         // Returning from the valid_node
@@ -628,61 +603,83 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
                 return;
         }
 
+        // cout << "error here 1.3" << endl;
+
         // Selecting a rule (here I'm actually selecting the var split rule);
-        g_node->var_split_rule = valid_cutpoint[arma::randi(arma::distr_param(0,valid_cutpoint.size()))];
+        g_node->var_split_rule = valid_cutpoint_vector[arma::randi(arma::distr_param(0,valid_cutpoint_vector.size()-1))];
 
+
+        // cout << "error here 1.4" << endl;
+        // cout << "error value:" << g_node->var_split_rule << endl;
         // Updating the ancestors;
-        g_node->left->ancestors(g_node->var_split_rule)++;
-        g_node->right->ancestors(g_node->var_split_rule)++;
+        g_node->left->ancestors(g_node->var_split)++;
+        g_node->right->ancestors(g_node->var_split)++;
 
-        // Create an aux for the left and right index
-        int train_left_counter = 0;
-        int train_right_counter = 0;
 
-        int test_left_counter = 0;
-        int test_right_counter = 0;
+        // Creating auxiliary vectors for training and test
+        Rcpp::NumericVector aux_train_index_left;
+        Rcpp::NumericVector aux_train_index_right;
+        Rcpp::NumericVector aux_test_index_left;
+        Rcpp::NumericVector aux_test_index_right;
+
+
+        // cout << "error here 1.5" << endl;
+
+        // Setting the sizes of the left and right nodes;
+        arma::vec node_left_res_(g_node->train_index.size());
+        arma::vec node_right_res_(g_node->train_index.size());
+        int arma_train_count_left = 0;
+        int arma_train_count_right = 0;
+
+
+        // cout << "error here 2.0" << endl;
 
         // Updating the left and the right nodes
-        for(int i = 0;i<g_node->n_leaf;i++){
+        for(int i = 0;i<g_node->train_index.size();i++){
 
                 if(data.x_train(g_node->train_index[i],g_node->var_split)<g_node->var_split_rule){
-                        g_node->left->train_index[train_left_counter] = g_node->train_index[i];
-                        train_left_counter++;
+                       aux_train_index_left.push_back(g_node->train_index[i]);
+                       node_left_res_(arma_train_count_left) = curr_res(g_node->train_index[i]);
+                       arma_train_count_left++;
                 } else {
-                        g_node->right->train_index[train_right_counter] = g_node->train_index[i];
-                        train_right_counter++;
+                        aux_train_index_right.push_back(g_node->train_index[i]);
+                        node_right_res_(arma_train_count_right) = curr_res(g_node->train_index[i]);
+                        arma_train_count_right++;
                 }
 
         }
 
-        Rcpp::Rcout << " ... It was ok for train ... " << endl;
+        // Stop if something goes wrong
+        if((g_node->right->train_index.size()+g_node->left->train_index.size())==g_node->train_index.size()){
+                Rcpp::stop("Invalid train indexes");
+        }
 
         // Updating the left and right nodes for the
-        for(int i = 0;i<data.x_test.n_rows; i++){
+        for(int i = 0;i<g_node->test_index.size(); i++){
 
-                if(g_node -> test_index[i] == -1){
-                        g_node->left->n_leaf_test = test_left_counter;
-                        g_node->right->n_leaf_test = test_right_counter;
-                        break;
-                }
                 if(data.x_test(g_node->test_index[i],g_node->var_split)<g_node->var_split_rule){
-                        g_node->left->test_index[test_left_counter] = g_node->test_index[i];
-                        test_left_counter++;
+                        aux_test_index_left.push_back(g_node->test_index[i]);
                 } else {
-                        g_node->right->test_index[test_right_counter] = g_node->test_index[i];
-                        test_right_counter++;
+                        aux_test_index_right.push_back(g_node->test_index[i]);
                 }
         }
 
-        Rcpp::Rcout<< ".. It was ok for the test .." << endl;
+        // Updating the nodes
+        g_node->left->train_index = aux_train_index_left;
+        g_node->right->train_index = aux_train_index_right;
+        g_node->left->test_index = aux_test_index_left;
+        g_node->right->test_index = aux_test_index_right;
+        node_left_res_.resize(g_node->left->train_index.size());
+        node_right_res_.resize(g_node->right->train_index.size());
+        g_node->left->leaf_res = node_left_res_;
+        g_node->right->leaf_res = node_right_res_;
 
-        // If is a root node
-        if(g_node->isRoot){
-                g_node->left->n_leaf = train_left_counter;
-                g_node->right->n_leaf = train_right_counter;
-                g_node->left->n_leaf_test = test_left_counter;
-                g_node->right->n_leaf_test = test_right_counter;
-        }
+        // Setting the size of the leaves
+        g_node->left->n_leaf = g_node->left->train_index.size();
+        g_node->right->n_leaf = g_node->right->train_index.size();
+        g_node->left->n_leaf_test = g_node->left->test_index.size();
+        g_node->right->n_leaf_test = g_node->right->test_index.size();
+
 
         // Avoiding nodes lower than the node_min
         if((g_node->left->n_leaf<5) || (g_node->right->n_leaf<5) ){
@@ -696,9 +693,7 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
         }
 
 
-        // Setting the sizes of the left and right nodes;
-        arma::vec node_left_res_(g_node->left->n_leaf);
-        arma::vec node_right_res_(g_node->right->n_leaf);
+
 
         // Iterating for each left and right terminal node
         arma::cube left_train_basis(g_node->left->n_leaf,data.B_train.n_cols,data.B_train.n_slices);
@@ -712,7 +707,6 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
                 // The left node has ...
                 for(int i = 0; i < g_node->left->n_leaf; i++){
                         left_train_basis.slice(j).row(i) = data.B_train.slice(j).row(g_node->left->train_index[i]);
-                        node_left_res_(i) =  curr_res(g_node->left->train_index[i]);
                         if(g_node->left->train_index[i]==-1){
                                 Rcpp::stop("Error HERE invalid INDEX");
                         }
@@ -720,7 +714,6 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
                 // The right node has ...
                 for(int k = 0; k < g_node->right->n_leaf; k++){
                         right_train_basis.slice(j).row(k) = data.B_test.slice(j).row(g_node->right->train_index[k]);
-                        node_right_res_(k) = curr_res(g_node->right->train_index[k]);
                         if(g_node->right->train_index[k]==-1){
                                 Rcpp::stop("Error HERE invalid INDEX");
                         }
@@ -740,7 +733,6 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
 
         }
         // Maybe use arma::subcube (But dont think is necessary);
-        // Updating the B and residuals for the left and right nodes
 
         // UPDATING THE BASIS
         g_node->left->B = left_train_basis;
@@ -751,7 +743,7 @@ void grow(Node* tree, modelParam &data, arma::vec &curr_res){
         g_node->right->leaf_res = node_right_res_;
 
 
-        cout << " Ok here, the problem is on the update loglikelihood" << endl;
+        // cout << " Ok here, the problem is on the update loglikelihood" << endl;
         // Once the elements of the left and right node are updated, need to update  the NodeLogLikelihood
         g_node->left->updateNodeLogLike(data);
         g_node->right->updateNodeLogLike(data);
@@ -856,323 +848,330 @@ void prune(Node* tree, modelParam&data, arma::vec &curr_res){
 }
 
 
-// // // Creating the change verb
-// void change(Node* tree, modelParam &data, arma::vec &curr_res){
-//
-//
-//         // Getting the number of terminal nodes
-//         std::vector<Node*> t_nodes = leaves(tree) ;
-//         std::vector<Node*> nog_nodes = nogs(tree);
-//
-//         // Selecting one node to be sampled
-//         Node* c_node = sample_node(nog_nodes);
-//
-//
-//         if(c_node->isRoot){
-//                 // cout << " THAT NEVER HAPPENS" << endl;
-//                c_node-> n_leaf = data.x_train.n_rows;
-//                c_node-> n_leaf_test = data.x_test.n_rows;
-//         }
-//
-//
-//         // Calculating the whole likelihood fo the tree
-//         for(int i = 0; i < t_nodes.size(); i++){
-//                 // cout << "Loglike error " << ed
-//                 t_nodes[i]->updateResiduals(curr_res);
-//         }
-//
-//         // cout << " Other kind of error" << endl;
-//         // If the current node has size zero there is no point of change its rule
-//         if(c_node->n_leaf==0) {
-//                 return;
-//         }
-//
-//         // Updating the loglikelihood for the old left and right nodes
-//         c_node->left->updateNodeLogLike(data);
-//         c_node->right->updateNodeLogLike(data);
-//
-//         // Storing all the old loglikelihood from left
-//         double old_left_log_like = c_node->left->log_likelihood;
-//         arma::cube old_left_b = c_node->left->B;
-//         arma::cube old_left_b_t = c_node->left->B_t;
-//         arma::cube old_left_b_test = c_node->left->B_test;
-//         arma::mat old_left_b_t_ones = c_node->left->b_t_ones;
-//         arma::vec old_left_leaf_res = c_node->left->leaf_res;
-//
-//
-//         // Storing old training information
-//         arma::vec old_left_train_index = c_node->left->train_index;
-//         int old_left_n_leaf = c_node->left->n_leaf;
-//
-//         c_node->left->train_index.fill(-1); // Returning to the original
-//
-//         // Storing old left ancestors and indexes
-//         arma::vec old_left_ancestors = c_node->left->ancestors;
-//
-//         // Storing all of the old loglikelihood from right;
-//         double old_right_log_like = c_node->right->log_likelihood;
-//         arma::cube old_right_b = c_node->right->B;
-//         arma::cube old_right_b_t = c_node->right->B_t;
-//         arma::cube old_right_b_test = c_node->right->B_test;
-//         arma::mat old_right_b_t_ones = c_node->right->b_t_ones;
-//         arma::vec old_right_leaf_res = c_node->right->leaf_res;
-//         arma::vec old_right_train_index = c_node->right->train_index;
-//         int old_right_n_leaf = c_node->right->n_leaf;
-//
-//         c_node->right->train_index.fill(-1); // This line restarts the right node;
-//
-//
-//         // Storing old right ancestors
-//         arma::vec old_right_ancestors = c_node->right->ancestors;
-//
-//         // Storing test observations
-//         arma::vec old_left_test_index = c_node->left->test_index;
-//         arma::vec old_right_test_index = c_node->right->test_index;
-//         int old_left_n_leaf_test = c_node->left->n_leaf_test;
-//         int old_right_n_leaf_test = c_node->right->n_leaf_test;
-//
-//         c_node->left->test_index.fill(-1);
-//         c_node->right->test_index.fill(-1);
-//
-//
-//         // Storing the old ones
-//         int old_var_split = c_node->var_split;
-//         int old_var_split_rule = c_node->var_split_rule;
-//
-//
-//         // ======
-//         // Starting the SELECTION for a new rule
-//         // ======
-//
-//         bool no_valid_node = false;
-//         int p_try = 0;
-//
-//         // Trying to find a cutpoint
-//         arma::vec split_candidates = arma::shuffle(arma::regspace(0,1,data.x_train.n_cols-1));
-//         Rcpp::NumericVector valid_cutpoint;
-//
-//         while(!no_valid_node){
-//                 c_node->var_split = split_candidates(p_try);
-//
-//
-//                 Rcpp::NumericVector var_split_range;
-//
-//                 // Getting the maximum and the minimum for the seleted split;
-//                 for(int i = 0; i < c_node->n_leaf;i++){
-//                         var_split_range.push_back(data.x_train(c_node->train_index[i],c_node->var_split));
-//                 }
-//
-//                 // Getting the minimum and the maximum
-//                 double max_rule = max(var_split_range);
-//                 double min_rule = min(var_split_range);
-//
-//                 // Checking if which cutpoints are valid
-//                 for(int  cut = 0; cut <data.xcut.n_rows; cut++){
-//                         if((data.xcut(cut,c_node->var_split)>min_rule) & (data.xcut(cut,c_node->var_split)<max_rule)){
-//                                 valid_cutpoint.push_back(data.xcut(cut,c_node->var_split));
-//                         }
-//                 }
-//
-//                 // Checking if the selected cutpoint is valid
-//                 if(valid_cutpoint.size()==0){
-//                         p_try++;
-//                         if(p_try>=data.x_train.n_cols){
-//                                 no_valid_node = true;
-//                         };
-//                 } else {
-//                         break; // Getting out from the while;
-//                 }
-//         }
-//
-//         // Returning to old values
-//         if(no_valid_node){
-//                 // If there's no valid node to be changed  return;
-//                 c_node->var_split = old_var_split;
-//                 c_node->var_split_rule = old_var_split_rule;
-//                 c_node->left->train_index = old_left_train_index;
-//                 c_node->left->test_index = old_left_test_index;
-//
-//                 c_node->right->train_index = old_right_train_index;
-//                 c_node->right->test_index = old_right_test_index;
-//                 return;
-//         }
-//
-//         // Selecting a rule (here I'm actually selecting the var split rule);
-//         c_node->var_split_rule = valid_cutpoint[arma::randi(arma::distr_param(0,valid_cutpoint.size()))];
-//
-//         // Need to update who are the ancestors for the new setting (removing the previous node split and adding the new onde);
-//         c_node->left->ancestors(old_var_split)--;
-//         c_node->left->ancestors(c_node->var_split)++;
-//         c_node->right->ancestors(old_var_split)--;
-//         c_node->right->ancestors(c_node->var_split)++;
-//
-//         // Create an aux for the left and right index
-//         int train_left_counter = 0;
-//         int train_right_counter = 0;
-//
-//         int test_left_counter = 0;
-//         int test_right_counter = 0;
-//
-//         // Creating auxiliary variables to store the new B, the new B_test, and the new residuals;
-//         arma::cube B_left(c_node->B.n_rows,c_node->B.n_cols,c_node->B.n_slices);
-//         arma::cube B_right(c_node->B.n_rows, c_node->B.n_cols,c_node->B.n_slices);
-//         arma::cube B_test_left(c_node->B_test.n_rows, c_node->B_test.n_cols,c_node->B.n_slices);
-//         arma::cube B_test_right(c_node->B_test.n_rows, c_node->B_test.n_cols,c_node->B.n_slices);
-//         arma::vec node_left_res_(c_node->n_leaf);
-//         arma::vec node_right_res_(c_node->n_leaf);
-//
-//         // Updating the left and the right nodes
-//         for(int i = 0;i<data.x_train.n_rows;i++){
-//                 // cout << " Train indexeses " << c_node -> train_index[i] << endl ;
-//                 if(c_node -> train_index[i] == -1){
-//                         c_node->left->n_leaf = train_left_counter;
-//                         c_node->right->n_leaf = train_right_counter;
-//                         break;
-//                 }
-//                 // cout << " Current train index " << c_node->train_index[i] << endl;
-//
-//                 if(data.x_train(c_node->train_index[i],c_node->var_split)<c_node->var_split_rule){
-//                         c_node->left->train_index[train_left_counter] = c_node->train_index[i];
-//                         for(int z = 0; z < c_node->B.n_slices;z++){
-//                                 B_left.slice(z).row(train_left_counter) = data.B_train.slice(z).row(c_node->train_index[i]);
-//                         }
-//                         node_left_res_(train_left_counter) = curr_res(c_node->train_index[i]);
-//                         train_left_counter++;
-//                 } else {
-//                         c_node->right->train_index[train_right_counter] = c_node->train_index[i];
-//                         for(int z = 0; z < c_node->B.n_slices;z++){
-//                                 B_right.slice(z).row(train_right_counter) = data.B_train.slice(z).row(c_node->train_index[i]);
-//                         }
-//                         node_right_res_(train_right_counter) = curr_res(c_node->train_index[i]);
-//                         train_right_counter++;
-//                 }
-//         }
-//
-//
-//
-//         // Updating the left and the right nodes
-//         for(int i = 0;i<data.x_test.n_rows;i++){
-//
-//                 if(c_node -> test_index[i] == -1){
-//                         c_node->left->n_leaf_test = test_left_counter;
-//                         c_node->right->n_leaf_test = test_right_counter;
-//                         break;
-//                 }
-//
-//                 if(data.x_test(c_node->test_index[i],c_node->var_split)<c_node->var_split_rule){
-//                         c_node->left->test_index[test_left_counter] = c_node->test_index[i];
-//                         for(int z = 0; z < c_node->B.n_slices;z++){
-//                                 B_left.slice(z).row(test_left_counter) = data.B_test.slice(z).row(c_node->test_index[i]);
-//                         }
-//                         test_left_counter++;
-//                 } else {
-//                         c_node->right->test_index[test_right_counter] = c_node->test_index[i];
-//                         for(int z = 0; z < c_node->B.n_slices;z++){
-//                                 B_right.slice(z).row(test_right_counter) = data.B_test.slice(z).row(c_node->test_index[i]);
-//                         }
-//                         test_right_counter++;
-//                 }
-//         }
-//
-//         // If is a root node
-//         if(c_node->isRoot){
-//                 c_node->left->n_leaf = train_left_counter;
-//                 c_node->right->n_leaf = train_right_counter;
-//                 c_node->left->n_leaf_test = test_left_counter;
-//                 c_node->right->n_leaf_test = test_right_counter;
-//         }
-//
-//
-//         if((c_node->left->n_leaf<5) || (c_node->right->n_leaf)<5){
-//
-//                 // Returning to the previous values
-//                 c_node->var_split = old_var_split;
-//                 c_node->var_split_rule = old_var_split_rule;
-//
-//
-//                 // Returning to the old ones
-//                 c_node->left->n_leaf = old_left_n_leaf;
-//                 c_node->left->n_leaf_test = old_left_n_leaf_test;
-//                 c_node->left->train_index = old_left_train_index;
-//                 c_node->left->test_index = old_left_test_index;
-//                 c_node->left->ancestors = old_left_ancestors;
-//
-//                 // Returning to the old ones
-//                 c_node->right->n_leaf = old_right_n_leaf;
-//                 c_node->right->n_leaf_test = old_right_n_leaf_test;
-//                 c_node->right->train_index = old_right_train_index;
-//                 c_node->right->test_index = old_right_test_index;
-//                 c_node->right->ancestors = old_right_ancestors;
-//                 return;
-//         }
-//
-//         // Update the B and B_ones structures;
-//         c_node->left->leaf_res = node_left_res_.subvec(0,c_node->left->n_leaf-1);
-//         c_node->right->leaf_res = node_right_res_.subvec(0,c_node->left->n_leaf-1);
-//
-//         c_node->left->B = B_left.rows(0,c_node->left->n_leaf-1);
-//         c_node->left->B_test = B_test_left.rows(0,c_node->left->n_leaf_test-1);
-//
-//         c_node->right->B = B_right.rows(0,c_node->right->n_leaf-1);
-//         c_node->right->B_test = B_test_right.rows(0,c_node->right->n_leaf_test-1);
-//
-//
-//         // Updating the new left and right loglikelihoods
-//         c_node->left->updateNodeLogLike(data);
-//         c_node->right->updateNodeLogLike(data);
-//
-//         // Calculating the acceptance
-//         double new_tree_log_like =  - old_left_log_like - old_right_log_like + c_node->left->log_likelihood + c_node->right->log_likelihood;
-//
-//         double acceptance = exp(new_tree_log_like);
-//
-//         if(arma::randu(arma::distr_param(0.0,1.0))<acceptance){
-//
-//                 // If the tree it was updated all the parameters were already updated;
-//
-//         } else {
-//
-//                 // Returning to the previous values
-//                 c_node->var_split = old_var_split;
-//                 c_node->var_split_rule = old_var_split_rule;
-//
-//                 // Returning to the previous values for the ancestors;
-//                 c_node->left->ancestors = old_left_ancestors;
-//                 c_node->right->ancestors = old_right_ancestors;
-//
-//                 // Returning to the residuals
-//                 c_node->left->leaf_res = old_left_leaf_res;
-//                 c_node->right->leaf_res = old_right_leaf_res;
-//
-//                 // Returning to the old ones
-//                 c_node->left->B = old_left_b;
-//                 c_node->left->B_t = old_left_b_t;
-//                 c_node->left->B_test = old_left_b_test;
-//                 c_node->left->b_t_ones = old_left_b_t_ones;
-//
-//
-//                 c_node->left->n_leaf = old_left_n_leaf;
-//                 c_node->left->n_leaf_test = old_left_n_leaf_test;
-//                 c_node->left->log_likelihood = old_left_log_like;
-//                 c_node->left->train_index = old_left_train_index;
-//                 c_node->left->test_index = old_left_test_index;
-//
-//                 // Returning to the old ones
-//                 c_node->right->B = old_right_b;
-//                 c_node->right->B_t = old_right_b_t;
-//                 c_node->right->B_test = old_right_b_test;
-//                 c_node->right->b_t_ones = old_right_b_t_ones;
-//
-//                 c_node->right->n_leaf = old_right_n_leaf;
-//                 c_node->right->n_leaf_test = old_right_n_leaf_test;
-//                 c_node->right->log_likelihood = old_right_log_like;
-//                 c_node->right->train_index = old_right_train_index;
-//                 c_node->right->test_index = old_right_test_index;
-//
-//         }
-//
-//         return;
-// }
+// // Creating the change verb
+void change(Node* tree, modelParam &data, arma::vec &curr_res){
+
+
+        // Getting the number of terminal nodes
+        std::vector<Node*> t_nodes = leaves(tree) ;
+        std::vector<Node*> nog_nodes = nogs(tree);
+
+        // Selecting one node to be sampled
+        Node* c_node = sample_node(nog_nodes);
+
+
+        if(c_node->isRoot){
+                // cout << " THAT NEVER HAPPENS" << endl;
+               c_node-> n_leaf = data.x_train.n_rows;
+               c_node-> n_leaf_test = data.x_test.n_rows;
+        }
+
+
+        // Calculating the whole likelihood fo the tree
+        for(int i = 0; i < t_nodes.size(); i++){
+                // cout << "Loglike error " << ed
+                t_nodes[i]->updateResiduals(curr_res);
+        }
+
+        // cout << " Other kind of error" << endl;
+        // If the current node has size zero there is no point of change its rule
+        if(c_node->n_leaf==0) {
+                return;
+        }
+
+        // Updating the loglikelihood for the old left and right nodes
+        c_node->left->updateNodeLogLike(data);
+        c_node->right->updateNodeLogLike(data);
+
+        // Storing all the old loglikelihood from left
+        double old_left_log_like = c_node->left->log_likelihood;
+        arma::cube old_left_b = c_node->left->B;
+        arma::cube old_left_b_test = c_node->left->B_test;
+        arma::vec old_left_leaf_res = c_node->left->leaf_res;
+
+
+        // Storing old training information
+        arma::vec old_left_train_index = c_node->left->train_index;
+        int old_left_n_leaf = c_node->left->n_leaf;
+
+        c_node->left->train_index = Rcpp::NumericVector(0); // Returning to the original
+
+        // Storing old left ancestors and indexes
+        arma::vec old_left_ancestors = c_node->left->ancestors;
+
+        // Storing all of the old loglikelihood from right;
+        double old_right_log_like = c_node->right->log_likelihood;
+        arma::cube old_right_b = c_node->right->B;
+        arma::cube old_right_b_test = c_node->right->B_test;
+        arma::vec old_right_leaf_res = c_node->right->leaf_res;
+        arma::vec old_right_train_index = c_node->right->train_index;
+        int old_right_n_leaf = c_node->right->n_leaf;
+
+        c_node->right->train_index = Rcpp::NumericVector(0); // This line restarts the right node;
+
+
+        // Storing old right ancestors
+        arma::vec old_right_ancestors = c_node->right->ancestors;
+
+        // Storing test observations
+        arma::vec old_left_test_index = c_node->left->test_index;
+        arma::vec old_right_test_index = c_node->right->test_index;
+        int old_left_n_leaf_test = c_node->left->n_leaf_test;
+        int old_right_n_leaf_test = c_node->right->n_leaf_test;
+
+        c_node->left->test_index = Rcpp::NumericVector(0);
+        c_node->right->test_index = Rcpp::NumericVector(0);
+
+
+        // Storing the old ones
+        int old_var_split = c_node->var_split;
+        int old_var_split_rule = c_node->var_split_rule;
+
+
+        // ======
+        // Starting the SELECTION for a new rule
+        // ======
+
+        bool no_valid_node = false;
+        int p_try = 0;
+
+        // Trying to find a cutpoint
+        arma::vec split_candidates = arma::shuffle(arma::regspace(0,1,data.x_train.n_cols-1));
+        Rcpp::NumericVector valid_cutpoint_vector;
+
+        while(!no_valid_node){
+                c_node->var_split = split_candidates(p_try);
+
+                Rcpp::NumericVector valid_cutpoint;
+                Rcpp::NumericVector var_split_range;
+
+                // Getting the maximum and the minimum for the seleted split;
+                for(int i = 0; i < c_node->n_leaf;i++){
+                        var_split_range.push_back(data.x_train(c_node->train_index[i],c_node->var_split));
+                }
+
+                // Getting the minimum and the maximum
+                double max_rule = max(var_split_range);
+                double min_rule = min(var_split_range);
+
+                // Checking if which cutpoints are valid
+                for(int  cut = 0; cut <data.xcut.n_rows; cut++){
+                        if((data.xcut(cut,c_node->var_split)>min_rule) & (data.xcut(cut,c_node->var_split)<max_rule)){
+                                valid_cutpoint.push_back(data.xcut(cut,c_node->var_split));
+                        }
+                }
+
+                // Checking if the selected cutpoint is valid
+                if(valid_cutpoint.size()==0){
+                        p_try++;
+                        if(p_try>=data.x_train.n_cols){
+                                no_valid_node = true;
+                        };
+                } else {
+                        valid_cutpoint_vector = valid_cutpoint;
+                        break; // Getting out from the while;
+                }
+        }
+
+        // Returning to old values
+        if(no_valid_node){
+                // If there's no valid node to be changed  return;
+                c_node->var_split = old_var_split;
+                c_node->var_split_rule = old_var_split_rule;
+                c_node->left->train_index = old_left_train_index;
+                c_node->left->test_index = old_left_test_index;
+
+                c_node->right->train_index = old_right_train_index;
+                c_node->right->test_index = old_right_test_index;
+                return;
+        }
+
+        // Selecting a rule (here I'm actually selecting the var split rule);
+        c_node->var_split_rule = valid_cutpoint_vector[arma::randi(arma::distr_param(0,valid_cutpoint_vector.size()-1))];
+
+        // Need to update who are the ancestors for the new setting (removing the previous node split and adding the new onde);
+        c_node->left->ancestors(old_var_split)--;
+        c_node->left->ancestors(c_node->var_split)++;
+        c_node->right->ancestors(old_var_split)--;
+        c_node->right->ancestors(c_node->var_split)++;
+
+        // Creating auxiliary vectors for training and test
+        Rcpp::NumericVector aux_train_index_left;
+        Rcpp::NumericVector aux_train_index_right;
+        Rcpp::NumericVector aux_test_index_left;
+        Rcpp::NumericVector aux_test_index_right;
+
+
+        // Setting the sizes of the left and right nodes;
+        arma::vec node_left_res_(c_node->train_index.size());
+        arma::vec node_right_res_(c_node->train_index.size());
+        int arma_train_count_left = 0;
+        int arma_train_count_right = 0;
+
+
+        // Updating the left and the right nodes
+        for(int i = 0;i<c_node->train_index.size();i++){
+
+                if(data.x_train(c_node->train_index[i],c_node->var_split)<c_node->var_split_rule){
+                        aux_train_index_left.push_back(c_node->train_index[i]);
+                        node_left_res_(arma_train_count_left) = curr_res(c_node->train_index[i]);
+                        arma_train_count_left++;
+                } else {
+                        aux_train_index_right.push_back(c_node->train_index[i]);
+                        node_right_res_(arma_train_count_right) = curr_res(c_node->train_index[i]);
+                        arma_train_count_right++;
+                }
+        }
+
+        // Stop if something goes wrong
+        if((c_node->right->train_index.size()+c_node->left->train_index.size())==c_node->train_index.size()){
+                Rcpp::stop("Invalid train indexes (change)");
+        }
+
+        // Updating the left and the right nodes
+        for(int i = 0;i<c_node->test_index.size();i++){
+
+
+                if(data.x_test(c_node->test_index[i],c_node->var_split)<c_node->var_split_rule){
+                        aux_test_index_left.push_back(c_node->test_index[i]);
+                } else {
+                       aux_test_index_right.push_back(c_node->test_index[i]);
+                }
+        }
+
+        // Updating the size of the left and right leaves;
+        c_node->left->n_leaf = aux_train_index_left.size();
+        c_node->right->n_leaf = aux_train_index_right.size();
+        c_node->left->n_leaf_test = aux_test_index_left.size();
+        c_node->right->n_leaf_test = aux_test_index_right.size();
+
+        if((c_node->left->n_leaf<5) || (c_node->right->n_leaf)<5){
+
+                // Returning to the previous values
+                c_node->var_split = old_var_split;
+                c_node->var_split_rule = old_var_split_rule;
+
+
+                // Returning to the old ones
+                c_node->left->n_leaf = old_left_n_leaf;
+                c_node->left->n_leaf_test = old_left_n_leaf_test;
+                c_node->left->train_index = old_left_train_index;
+                c_node->left->test_index = old_left_test_index;
+                c_node->left->ancestors = old_left_ancestors;
+
+                // Returning to the old ones
+                c_node->right->n_leaf = old_right_n_leaf;
+                c_node->right->n_leaf_test = old_right_n_leaf_test;
+                c_node->right->train_index = old_right_train_index;
+                c_node->right->test_index = old_right_test_index;
+                c_node->right->ancestors = old_right_ancestors;
+                return;
+        }
+
+        // Update residuals from terminal nodes
+        c_node->left->train_index = aux_train_index_left;
+        c_node->right->train_index = aux_train_index_right;
+        c_node->left->test_index = aux_test_index_left;
+        c_node->right->test_index = aux_test_index_right;
+        node_left_res_.resize(c_node->left->train_index.size());
+        node_right_res_.resize(c_node->right->train_index.size());
+        c_node->left->leaf_res = node_left_res_;
+        c_node->right->leaf_res = node_right_res_;
+
+        // Iterating for each left and right terminal node
+        arma::cube left_train_basis(c_node->left->n_leaf,data.B_train.n_cols,data.B_train.n_slices);
+        arma::cube right_train_basis(c_node->right->n_leaf,data.B_train.n_cols,data.B_train.n_slices);
+        arma::cube left_test_basis(c_node->left->n_leaf_test,data.B_test.n_cols,data.B_test.n_slices);
+        arma::cube right_test_basis(c_node->right->n_leaf_test,data.B_test.n_cols,data.B_test.n_slices);
+
+        for(int j = 0; j < data.d_var; j++){
+
+                // The left node has ...
+                for(int i = 0; i < c_node->left->n_leaf; i++){
+                        left_train_basis.slice(j).row(i) = data.B_train.slice(j).row(c_node->left->train_index[i]);
+
+                }
+                // The right node has ...
+                for(int k = 0; k < c_node->right->n_leaf; k++){
+                        right_train_basis.slice(j).row(k) = data.B_test.slice(j).row(c_node->right->train_index[k]);
+                }
+
+                // ----
+                // Doing the same for the test
+                // ----
+
+                // The left node has ...
+                for(int i = 0; i < c_node->left->n_leaf_test; i++){
+                        left_test_basis.slice(j).row(i) = data.B_test.slice(j).row(c_node->left->test_index[i]);
+                }
+                // The right node has ...
+                for(int k = 0; k < c_node->right->n_leaf_test; k++){
+                        right_test_basis.slice(j).row(k) = data.B_test.slice(j).row(c_node->right->test_index[k]);
+                }
+
+        }
+
+
+        // Updating the Basis
+        c_node->left->B = left_train_basis;
+        c_node->right->B = right_train_basis;
+        c_node->left->B_test = left_test_basis;
+        c_node->right->B_test = right_test_basis;
+
+        // The residuals were updated before;
+
+        // Updating the new left and right loglikelihoods
+        c_node->left->updateNodeLogLike(data);
+        c_node->right->updateNodeLogLike(data);
+
+        // Calculating the acceptance
+        double new_tree_log_like =  - old_left_log_like - old_right_log_like + c_node->left->log_likelihood + c_node->right->log_likelihood;
+
+        double acceptance = exp(new_tree_log_like);
+
+        if(arma::randu(arma::distr_param(0.0,1.0))<acceptance){
+
+                // If the tree it was updated all the parameters were already updated;
+
+        } else {
+
+                // Returning to the previous values
+                c_node->var_split = old_var_split;
+                c_node->var_split_rule = old_var_split_rule;
+
+                // Returning to the previous values for the ancestors;
+                c_node->left->ancestors = old_left_ancestors;
+                c_node->right->ancestors = old_right_ancestors;
+
+                // Returning to the residuals
+                c_node->left->leaf_res = old_left_leaf_res;
+                c_node->right->leaf_res = old_right_leaf_res;
+
+                // Returning to the old ones
+                c_node->left->B = old_left_b;
+                c_node->left->B_test = old_left_b_test;
+
+
+                c_node->left->n_leaf = old_left_n_leaf;
+                c_node->left->n_leaf_test = old_left_n_leaf_test;
+                c_node->left->log_likelihood = old_left_log_like;
+                c_node->left->train_index = old_left_train_index;
+                c_node->left->test_index = old_left_test_index;
+
+                // Returning to the old ones
+                c_node->right->B = old_right_b;
+                c_node->right->B_test = old_right_b_test;
+
+                c_node->right->n_leaf = old_right_n_leaf;
+                c_node->right->n_leaf_test = old_right_n_leaf_test;
+                c_node->right->log_likelihood = old_right_log_like;
+                c_node->right->train_index = old_right_train_index;
+                c_node->right->test_index = old_right_test_index;
+
+        }
+
+        return;
+}
 
 
 
@@ -1205,11 +1204,7 @@ void Node::updateNodeLogLike(modelParam& data){
                 n_leaf_test = data.x_test.n_rows;
                 B = data.B_train;
                 B_test = data.B_test;
-                // B_t = arma::cube(data.p,data.x_train.n_rows,data.d_var);
-                // for(int j = 0; j < B.n_slices; j++){
-                //         B_t.slice(j) = B.slice(j).t();
-                // }
-                // b_t_ones = arma::mat(data.p,data.d_var);
+
         }
 
 
@@ -1227,16 +1222,6 @@ void Node::updateNodeLogLike(modelParam& data){
         arma::mat diag_aux(n_leaf,n_leaf,arma::fill::eye);
         arma::mat res_cov(n_leaf,n_leaf,arma::fill::zeros);
         s_tau_beta_0 = (n_leaf + data.tau_b_intercept/data.tau);
-
-        // cout << "B dimensions are: " << B.n_rows << " " << B.n_cols << " "<< B.n_slices << endl;
-        // cout << "B test dimensions are: " << B_test.n_rows << " " << B_test.n_cols << " "<< B_test.n_slices << endl;
-
-        // Showing the number of splices into B
-        Rcpp::Rcout << " Original number of variables: "<< data.d_var << endl;
-        Rcpp::Rcout << " Number of slices from B: "<< B.n_slices << endl;
-        // Rcpp::Rcout << " Number of slices from B (TRANSPOSED): "<< B_t.n_slices << endl;
-
-        // b_t_ones = arma::mat(data.p,data.d_var);
 
         // Need to iterate a d-level
         for(int k = 0; k < data.d_var;k++){
@@ -1396,7 +1381,7 @@ void getPredictions(Node* tree,
         for(int i = 0; i<t_nodes.size();i++){
 
                 // Skipping empty nodes
-                if(t_nodes[i]->n_leaf<2){
+                if(t_nodes[i]->n_leaf<1){
                         Rcpp::stop("There are empty nodes");
                         continue;
                 }
@@ -1437,15 +1422,8 @@ void getPredictions(Node* tree,
                         current_prediction_train[t_nodes[i]->train_index[j]] = leaf_y_hat[j];
                 }
 
-                // Only over TRAINING observations
-
-                // Printing the number of rows in B_test
-                Rcpp::Rcout << "B_test matrix:  "<< t_nodes[i]->B_test.n_rows << endl;
-                Rcpp::Rcout << "Number of leaves in test set :  "<< t_nodes[i]->n_leaf_test << endl;
-
-
                 if(t_nodes[i]->n_leaf_test < 1 ){
-                        Rcpp::stop("Stopping test error");
+                        // Rcpp::stop("Stopping test error");
                         continue;
                 }
 
@@ -1643,7 +1621,7 @@ Rcpp::List sbart(arma::mat x_train,
         int curr = 0;
 
         // Trying error messages
-        Rcpp::Rcout << " Model Param error" << endl;
+        // Rcpp::Rcout << " Model Param error" << endl;
 
         // Creating the struct object
         modelParam data(x_train,
@@ -1672,7 +1650,7 @@ Rcpp::List sbart(arma::mat x_train,
                         intercept_model,
                         stump);
         // Trying error messages
-        Rcpp::Rcout << " Data check" << endl;
+        // Rcpp::Rcout << " Data check" << endl;
 
 
         // Getting the Penalisation difference matrix
@@ -1717,7 +1695,7 @@ Rcpp::List sbart(arma::mat x_train,
 
         int tree_mcmc_counter = 0;
 
-        Rcpp::Rcout << " All object initialisation check " << endl;
+        // Rcpp::Rcout << " All object initialisation check " << endl;
 
         for(int mcmc_iter = 0;mcmc_iter<data.n_mcmc;mcmc_iter++){
 
@@ -1767,29 +1745,29 @@ Rcpp::List sbart(arma::mat x_train,
                         // verb = 0.27;
                         // Selecting the verb
                         if(verb < 0.3){
-                                cout << " Grow error" << endl;
+                                // cout << " Grow error" << endl;
                                 grow(all_forest.trees[t],data,partial_residuals);
                         } else if((verb>=0.3) & (verb<0.6)) {
-                                cout << " Prune error" << endl;
+                                // cout << " Prune error" << endl;
                                 prune(all_forest.trees[t], data, partial_residuals);
                         } else {
-                                cout << " Change error" << endl;
-                                // change(all_forest.trees[t], data, partial_residuals);
-                                std::cout << "Error after change" << endl;
+                                // cout << " Change error" << endl;
+                                change(all_forest.trees[t], data, partial_residuals);
+                                // std::cout << "Error after change" << endl;
                         }
 
 
                         // Updating the all the parameters
-                        cout << "Error on Beta" << endl;
+                        // cout << "Error on Beta" << endl;
                         updateBeta(all_forest.trees[t], data);
-                        cout << "Error on Gamma" << endl;
+                        // cout << "Error on Gamma" << endl;
 
                         if(data.intercept_model){
                                 updateGamma(all_forest.trees[t],data);
                         }
 
                         // Getting predictions
-                        cout << " Error on Get Predictions" << endl;
+                        // cout << " Error on Get Predictions" << endl;
                         getPredictions(all_forest.trees[t],data,y_hat,prediction_test,tree_mcmc_counter);
                         data.tree_mcmc_matrix(tree_mcmc_counter,0) = t;
                         data.tree_mcmc_matrix(tree_mcmc_counter,1) = mcmc_iter;
@@ -1816,7 +1794,7 @@ Rcpp::List sbart(arma::mat x_train,
                 // updateTauBintercept(all_forest,data,a_tau_b,d_tau_b);
 
                 // std::cout << "Error Delta: " << data.delta << endl;
-                updateDelta(data);
+                // updateDelta(data);
                 // std::cout << "Error Tau: " << data.tau<< endl;
                 updateTau(prediction_train_sum, data);
 
